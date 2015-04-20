@@ -5,6 +5,7 @@ from PIL import Image, ImageOps
 from django.conf import settings
 from django.core.files.base import ContentFile
 from django.db.models.fields.files import FieldFile
+import json
 
 
 class VideoThumbnailHelper(FieldFile):
@@ -33,6 +34,8 @@ class VideoThumbnailHelper(FieldFile):
         path = "%s/temp/" % settings.MEDIA_ROOT
         if not os.path.isdir(path):
           os.mkdir(path)
+
+        rotation_args = self._get_rotation_args(video.path)
           
         hashable_value = "%s%s" % (full_filename, int(time.time()))
         filehash = hashlib.md5(hashable_value).hexdigest()
@@ -41,8 +44,8 @@ class VideoThumbnailHelper(FieldFile):
         frame = "%(path)s%(filename)s.%(frame)s.jpg" % frame_args
 
         # Build the ffmpeg shell command and run it via subprocess
-        cmd_args = {'frames': frames, 'video_path': video.path, 'output': frame}
-        command = "ffmpeg -i %(video_path)s -y -vframes %(frames)d %(output)s"
+        cmd_args = {'frames': frames, 'video_path': video.path, 'output': frame, 'rotation_args': rotation_args}
+        command = "ffmpeg -i %(video_path)s -y -vframes %(frames)d%(rotation_args)s %(output)s"
         command = command % cmd_args
         response = subprocess.call(command, shell=True,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -128,6 +131,42 @@ class VideoThumbnailHelper(FieldFile):
             os.unlink(frame_file)
 
         return ContentFile(io.getvalue())
+
+    def _get_rotation_args(self, path):
+        """
+        Gets rotation hint from videos. Actual for videos recorded from mobile devices like Android or iPhone.
+        """
+
+        command_args = {'video_path': path}
+        # select first video stream and get only "rotate" tag.
+        command = 'ffprobe -i %(video_path)s -show_streams -select_streams v:0 -show_entries stream=tags:stream_tags=rotate -of json 2>/dev/null' % command_args
+
+        p = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+        p.wait()
+
+        if(p.returncode != 0):
+            return ''
+
+        data = json.loads(p.stdout.read())
+
+        # +45 for cases like "rotate=89"
+        rotation = int((int(data['streams'][0]['tags'].get('rotate', 0)) % 360 + 45) / 90)
+
+        if(rotation == 0):
+            return ''
+
+        if(rotation == 1):
+            return ' -vf "transpose=1"'
+
+        if(rotation == 2):
+            # there is no traspose filter for 180 degress. this is workaround.
+            return ' -vf "vflip,hflip"'
+
+        if(rotation == 3):
+            return ' -vf "transpose=2"'
+
+        return ''
+
 
     def get_thumbnail_url(self, size):
         path, full_filename = os.path.split(self.url)
