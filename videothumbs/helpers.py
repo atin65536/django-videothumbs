@@ -44,8 +44,8 @@ class VideoThumbnailHelper(FieldFile):
         frame = "%(path)s%(filename)s.%(frame)s.jpg" % frame_args
 
         # Build the ffmpeg shell command and run it via subprocess
-        cmd_args = {'frames': frames, 'video_path': video.path, 'output': frame, 'rotation_args': rotation_args}
-        command = "ffmpeg -i %(video_path)s -y -vframes %(frames)d%(rotation_args)s %(output)s"
+        cmd_args = {'frames': frames, 'video_path': video.path, 'output': frame, 'optional_args': rotation_args}
+        command = "ffmpeg -i %(video_path)s -y -vframes %(frames)d%(optional_args)s %(output)s"
         command = command % cmd_args
         response = subprocess.call(command, shell=True,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
