@@ -38,7 +38,7 @@ class VideoThumbnailHelper(FieldFile):
         rotation_args = self._get_rotation_args(video.path)
           
         hashable_value = "%s%s" % (full_filename, int(time.time()))
-        filehash = hashlib.md5(hashable_value).hexdigest()
+        filehash = hashlib.md5(hashable_value.encode('utf-8')).hexdigest()
         
         frame_args = {'path': path, 'filename': filehash, 'frame': '%d'}
         frame = "%(path)s%(filename)s.%(frame)s.jpg" % frame_args
