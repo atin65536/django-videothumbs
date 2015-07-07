@@ -25,8 +25,22 @@ class VideoThumbnailHelper(FieldFile):
 
         histogram_list = []
         frame_average = []
+        temp_file = None
 
-        path, full_filename = os.path.split(self.path)
+        try:
+            file_path = self.path
+            is_temp = False
+        except NotImplementedError:
+            import tempfile
+            temp_file = tempfile.NamedTemporaryFile(dir=settings.FILE_UPLOAD_TEMP_DIR)
+            video.open()
+            temp_file.write(video.read())
+            temp_file.flush()
+
+            file_path = os.path.join(settings.FILE_UPLOAD_TEMP_DIR, temp_file.name)
+            is_temp = True
+
+        path, full_filename = os.path.split(file_path)
         filename, extension = os.path.splitext(full_filename)
 
         # By default temp frame data is stored under MEDIA_ROOT/temp
@@ -35,7 +49,7 @@ class VideoThumbnailHelper(FieldFile):
         if not os.path.isdir(path):
           os.mkdir(path)
 
-        rotation_args = self._get_rotation_args(video.path)
+        rotation_args = self._get_rotation_args(file_path)
           
         hashable_value = "%s%s" % (full_filename, int(time.time()))
         filehash = hashlib.md5(hashable_value.encode('utf-8')).hexdigest()
@@ -44,7 +58,7 @@ class VideoThumbnailHelper(FieldFile):
         frame = "%(path)s%(filename)s.%(frame)s.jpg" % frame_args
 
         # Build the ffmpeg shell command and run it via subprocess
-        cmd_args = {'frames': frames, 'video_path': video.path, 'output': frame, 'optional_args': rotation_args}
+        cmd_args = {'frames': frames, 'video_path': file_path, 'output': frame, 'optional_args': rotation_args}
         command = "ffmpeg -i %(video_path)s -y -vframes %(frames)d%(optional_args)s %(output)s"
         command = command % cmd_args
         response = subprocess.call(command, shell=True,
@@ -52,6 +66,7 @@ class VideoThumbnailHelper(FieldFile):
 
         # Fail silently if ffmpeg is not installed.
         # the ffmpeg commandline tool that is.
+
         if response != 0:
             return
 
@@ -130,6 +145,9 @@ class VideoThumbnailHelper(FieldFile):
             frame_file = frame % (idx + 1)
             os.unlink(frame_file)
 
+        if is_temp:
+            temp_file.close()
+
         return ContentFile(io.getvalue())
 
     def _get_rotation_args(self, path):
@@ -181,15 +199,16 @@ class VideoThumbnailHelper(FieldFile):
 
     def save(self, name, content, save=True):
         super(VideoThumbnailHelper, self).save(name, content, save)
+
         
-        path, full_filename = os.path.split(self.path)
+        path, full_filename = os.path.split(self.name)
         filename, extension = os.path.splitext(full_filename)
         path += "/thumbnail/"
         
         # By default thumbnails are stored under upload_to/thumbnails/
         # Make sure this directory exists.
-        if not os.path.isdir(path):
-          os.mkdir(path)
+        #if not os.path.isdir(path):
+        #  os.mkdir(path)
 
         # Cycle through the sizes and generate thumbnails.
         for size in self.sizes:
